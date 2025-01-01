@@ -50,7 +50,11 @@ public class DtoMapper implements IDtoMapper {
         orderResponseDto.setPaymentMethod(order.getPaymentMethod().toString());
         orderResponseDto.setOrderDate(order.getOrderDate());
         orderResponseDto.setExpectedDeliveryDate(order.getExpectedDeliveryDate());
-        orderResponseDto.setDeliverySnapshot(objectMapper.convertValue(order.getDeliverySnapshot(), DeliverySnapshot.class));
+        try {
+            orderResponseDto.setDeliverySnapshot(objectMapper.readValue(order.getDeliverySnapshot(), DeliverySnapshot.class));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
 
         List<OrderItemDto> orderItems = new ArrayList<>();
         for (OrderItem orderItem : order.getOrderItems()) {
@@ -58,7 +62,11 @@ public class DtoMapper implements IDtoMapper {
             orderItemDto.setProductId(orderItem.getProductId());
             orderItemDto.setQuantity(orderItem.getQuantity());
             orderItemDto.setPrice(orderItem.getPrice());
-            orderItemDto.setProductSnapshot(objectMapper.convertValue(orderItem.getProductSnapshot(), ProductSnapshot.class));
+            try {
+                orderItemDto.setProductSnapshot(objectMapper.readValue(orderItem.getProductSnapshot(), ProductSnapshot.class));
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
             orderItems.add(orderItemDto);
         }
 

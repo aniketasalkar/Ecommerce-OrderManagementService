@@ -7,7 +7,7 @@ import java.util.Date;
 import java.util.List;
 
 @Data
-@Entity
+@Entity(name = "orders")
 public class Order extends BaseModel {
 
     @Column(nullable = false)

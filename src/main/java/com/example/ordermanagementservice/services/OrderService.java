@@ -3,12 +3,18 @@ package com.example.ordermanagementservice.services;
 import com.example.ordermanagementservice.clients.InventoryServiceClient;
 import com.example.ordermanagementservice.dtos.InventoryReservationRequestDto;
 import com.example.ordermanagementservice.dtos.InventoryReservationResponseDto;
+import com.example.ordermanagementservice.dtos.RevokeInventoryReservationDto;
 import com.example.ordermanagementservice.models.*;
+import com.example.ordermanagementservice.repositories.OrderItemRepository;
 import com.example.ordermanagementservice.repositories.OrderRepository;
+import com.example.ordermanagementservice.repositories.OrderTrackingRepository;
 import com.example.ordermanagementservice.utils.IDtoMapper;
 import com.example.ordermanagementservice.utils.IdGenerator;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
@@ -18,10 +24,13 @@ import java.util.Date;
 public class OrderService implements IOrderService {
 
     @Autowired
-    IDtoMapper dtoMapper;
+    OrderRepository orderRepository;
 
     @Autowired
-    OrderRepository orderRepository;
+    OrderItemRepository orderItemRepository;
+
+    @Autowired
+    OrderTrackingRepository orderTrackingRepository;
 
     @Autowired
     InventoryServiceClient inventoryServiceClient;
@@ -42,6 +51,7 @@ public class OrderService implements IOrderService {
 
             if (inventoryReservationResponseDto != null) {
                 item.setReservationId(inventoryReservationResponseDto.getReservationId());
+                log.info("Reserved Item: {} Quantity: {}", item.getProductId(), item.getQuantity());
             } else {
                 order.getOrderItems().remove(item);
             }
@@ -72,7 +82,37 @@ public class OrderService implements IOrderService {
         order.setOrderStatus(OrderStatus.PLACED);
         order.setPaymentStatus(PaymentStatus.PENDING);
         order.setOrderId(orderId);
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
 
+        Order savedOrder = null;
+        try {
+            savedOrder = saveOrder(order);
+        } catch (DataAccessException e) {
+            log.error("Error while saving order {} of user {}", orderId, order.getUserId());
+            handleInventoryRevocation(order);
+        }
+
+        return savedOrder;
+    }
+
+    @Transactional
+    protected Order saveOrder(Order order) {
+        orderItemRepository.saveAll(order.getOrderItems());
+        orderTrackingRepository.save(order.getOrderTracking());
         return orderRepository.save(order);
+    }
+
+    private void handleInventoryRevocation(Order order) {
+        for (OrderItem item : order.getOrderItems()) {
+            RevokeInventoryReservationDto revokeInventoryReservationDto = new RevokeInventoryReservationDto();
+            revokeInventoryReservationDto.setRevokeType("cancelled");
+            revokeInventoryReservationDto.setOrderId(order.getOrderId());
+            revokeInventoryReservationDto.setReservationId(item.getReservationId());
+
+            // Call the Inventory service to revoke the reservation
+            inventoryServiceClient.revokeReservation(revokeInventoryReservationDto);
+            log.info("Revoked reservation for item {}", item.getProductId());
+        }
     }
 }

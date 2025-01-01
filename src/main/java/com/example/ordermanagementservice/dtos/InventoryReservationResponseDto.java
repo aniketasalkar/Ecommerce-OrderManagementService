@@ -15,11 +15,11 @@ public class InventoryReservationResponseDto {
     private String orderId;
 
     //    private Long inventoryItemId;
-    private String inventoryItemResponse;
+    private InventoryItemResponseDto inventoryItemResponse;
 
     private Date reservationDate;
 
     private Date expirationDate;
 
-    private String inventoryReservationStatus;
+    private InventoryReservationStatus inventoryReservationStatus;
 }
