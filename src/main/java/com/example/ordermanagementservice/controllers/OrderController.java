@@ -38,10 +38,11 @@ public class OrderController {
     }
 
     @GetMapping("/get_orders/{userId}")
-    public ResponseEntity<List<OrderResponseDto>> getAllOrdersByUser(@PathVariable Long userId, HttpServletRequest httpServletRequest) {
+    public ResponseEntity<List<OrderResponseDto>> getAllOrdersByUser(@PathVariable Long userId,
+                                                                     @RequestParam(value = "status", required = false, defaultValue = "ALL") String filter) {
         List<OrderResponseDto> orderResponseDtos;
         try {
-            orderResponseDtos = dtoMapper.fromOrders(orderService.getAllOrdersofUser(userId,
+            orderResponseDtos = dtoMapper.fromOrders(orderService.getAllOrdersofUser(userId, filter,
                     dtoMapper.getValidateAndRefreshTokenRequestDto()));
 
             return new ResponseEntity<>(orderResponseDtos, HttpStatus.OK);

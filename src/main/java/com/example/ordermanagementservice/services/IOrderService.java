@@ -8,5 +8,5 @@ import java.util.List;
 public interface IOrderService {
     Order createOrder(Order order, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
 //    Order updateOrder(Order order);
-    List<Order> getAllOrdersofUser(long userId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
+    List<Order> getAllOrdersofUser(long userId, String filter, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
 }

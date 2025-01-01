@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -120,9 +121,21 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    public List<Order> getAllOrdersofUser(long userId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+    public List<Order> getAllOrdersofUser(long userId, String filter, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
         validateUser(userId, validateAndRefreshTokenRequestDto);
-        return orderRepository.findAllByUserId(userId);
+        List<Order> orders;
+        switch (filter.toUpperCase().trim()) {
+            case "CANCELLED":
+                orders = orderRepository.findAllByUserIdAndOrderStatus(userId, OrderStatus.CANCELLED);
+                break;
+            case "ALL":
+                orders = orderRepository.findAllByUserId(userId);
+                break;
+            default:
+                orders = orderRepository.findOrderByUserIdAndOrderStatusIsNot(userId, OrderStatus.CANCELLED);
+
+        }
+        return orders;
     }
 
     @Transactional
