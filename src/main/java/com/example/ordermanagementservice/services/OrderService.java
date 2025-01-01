@@ -1,23 +1,27 @@
 package com.example.ordermanagementservice.services;
 
 import com.example.ordermanagementservice.clients.InventoryServiceClient;
-import com.example.ordermanagementservice.dtos.InventoryReservationRequestDto;
-import com.example.ordermanagementservice.dtos.InventoryReservationResponseDto;
-import com.example.ordermanagementservice.dtos.RevokeInventoryReservationDto;
+import com.example.ordermanagementservice.clients.UserAuthServiceClient;
+import com.example.ordermanagementservice.clients.UserManagementServiceClient;
+import com.example.ordermanagementservice.dtos.*;
+import com.example.ordermanagementservice.exceptions.InvalidUserException;
+import com.example.ordermanagementservice.exceptions.TokenExpiredException;
 import com.example.ordermanagementservice.models.*;
 import com.example.ordermanagementservice.repositories.OrderItemRepository;
 import com.example.ordermanagementservice.repositories.OrderRepository;
 import com.example.ordermanagementservice.repositories.OrderTrackingRepository;
-import com.example.ordermanagementservice.utils.IDtoMapper;
 import com.example.ordermanagementservice.utils.IdGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -35,27 +39,41 @@ public class OrderService implements IOrderService {
     @Autowired
     InventoryServiceClient inventoryServiceClient;
 
-    @Override
-    public Order createOrder(Order order) {
+    @Autowired
+    UserAuthServiceClient userAuthServiceClient;
 
+    @Autowired
+    UserManagementServiceClient userManagementServiceClient;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
+    @Override
+    public Order createOrder(Order order, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+
+        validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
         String orderId = IdGenerator.generateId(14);
 
-        for (OrderItem item : order.getOrderItems()) {
-            InventoryReservationRequestDto inventoryReservationRequestDto = new InventoryReservationRequestDto();
-            inventoryReservationRequestDto.setProductId(item.getProductId());
-            inventoryReservationRequestDto.setQuantity(item.getQuantity());
-            inventoryReservationRequestDto.setOrderId(orderId);
+        List<OrderItem> filteredItems = order.getOrderItems().stream()
+                .filter(item -> {
+                    InventoryReservationRequestDto inventoryReservationRequestDto = new InventoryReservationRequestDto();
+                    inventoryReservationRequestDto.setProductId(item.getProductId());
+                    inventoryReservationRequestDto.setQuantity(item.getQuantity());
+                    inventoryReservationRequestDto.setOrderId(orderId);
 
-            InventoryReservationResponseDto  inventoryReservationResponseDto = inventoryServiceClient.
-                    reserveInventoryItem(inventoryReservationRequestDto);
+                    InventoryReservationResponseDto inventoryReservationResponseDto = inventoryServiceClient.
+                            reserveInventoryItem(inventoryReservationRequestDto);
 
-            if (inventoryReservationResponseDto != null) {
-                item.setReservationId(inventoryReservationResponseDto.getReservationId());
-                log.info("Reserved Item: {} Quantity: {}", item.getProductId(), item.getQuantity());
-            } else {
-                order.getOrderItems().remove(item);
-            }
-        }
+                    if (inventoryReservationResponseDto != null) {
+                        item.setReservationId(inventoryReservationResponseDto.getReservationId());
+                        log.info("Reserved Item: {} Quantity: {}", item.getProductId(), item.getQuantity());
+                        return true; // Keep the item
+                    }
+                    return false; // Exclude the item
+                })
+                .collect(Collectors.toList());
+
+        order.setOrderItems(filteredItems);
 
         Date now = new Date();
 
@@ -69,7 +87,12 @@ public class OrderService implements IOrderService {
         for (OrderItem item : order.getOrderItems()) {
             item.setCreatedAt(now);
             item.setUpdatedAt(now);
-            totalAmount += item.getQuantity() * item.getPrice();
+            try {
+                totalAmount += item.getQuantity() * objectMapper.
+                        readValue(item.getProductSnapshot(), ProductSnapshot.class).getPrice();
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         if (totalAmount != order.getTotalAmount()) {
@@ -96,6 +119,12 @@ public class OrderService implements IOrderService {
         return savedOrder;
     }
 
+    @Override
+    public List<Order> getAllOrdersofUser(long userId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+        validateUser(userId, validateAndRefreshTokenRequestDto);
+        return orderRepository.findAllByUserId(userId);
+    }
+
     @Transactional
     protected Order saveOrder(Order order) {
         orderItemRepository.saveAll(order.getOrderItems());
@@ -113,6 +142,18 @@ public class OrderService implements IOrderService {
             // Call the Inventory service to revoke the reservation
             inventoryServiceClient.revokeReservation(revokeInventoryReservationDto);
             log.info("Revoked reservation for item {}", item.getProductId());
+        }
+    }
+
+    private void validateUser(long userId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+        UserResponseDto userResponseDto = userManagementServiceClient.getUserById(userId);
+
+        if (userResponseDto.getId() != userId) {
+            throw new InvalidUserException("Invalid user");
+        }
+
+        if (!userAuthServiceClient.validateToken(userResponseDto.getEmail(), validateAndRefreshTokenRequestDto)) {
+            throw new TokenExpiredException("Token expired. Please try after login.");
         }
     }
 }

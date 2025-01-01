@@ -3,10 +3,13 @@ package com.example.ordermanagementservice.utils;
 import com.example.ordermanagementservice.dtos.OrderRequestDto;
 import com.example.ordermanagementservice.dtos.OrderResponseDto;
 import com.example.ordermanagementservice.dtos.OrderItemDto;
+import com.example.ordermanagementservice.dtos.ValidateAndRefreshTokenRequestDto;
+import com.example.ordermanagementservice.exceptions.TokenExpiredException;
 import com.example.ordermanagementservice.exceptions.UnsupportedPaymentMethod;
 import com.example.ordermanagementservice.models.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +21,8 @@ public class DtoMapper implements IDtoMapper {
 
     @Autowired
     ObjectMapper objectMapper;
+    @Autowired
+    private HttpServletRequest httpServletRequest;
 
     @Override
     public Order fromOrderRequestDto(OrderRequestDto orderRequestDto) {
@@ -73,6 +78,32 @@ public class DtoMapper implements IDtoMapper {
         orderResponseDto.setOrderItems(orderItems);
 
         return orderResponseDto;
+    }
+
+    @Override
+    public List<OrderResponseDto> fromOrders(List<Order> orders) {
+        List<OrderResponseDto> orderResponseDtos = new ArrayList<>();
+
+        for (Order order : orders) {
+            OrderResponseDto orderResponseDto = fromOrder(order);
+            orderResponseDtos.add(orderResponseDto);
+        }
+
+        return orderResponseDtos;
+    }
+
+    @Override
+    public ValidateAndRefreshTokenRequestDto getValidateAndRefreshTokenRequestDto() {
+        ValidateAndRefreshTokenRequestDto tokensDto = null;
+        try {
+            tokensDto = new ValidateAndRefreshTokenRequestDto();
+            tokensDto.setAccessToken(httpServletRequest.getHeader("Set-Cookie").toString());
+            tokensDto.setRefreshToken(httpServletRequest.getHeader("Set-Cookie2").toString());
+        } catch (Exception e) {
+            throw new TokenExpiredException("Token required");
+        }
+
+        return tokensDto;
     }
 
     private List<OrderItem> fromCreateOrderRequestDto(List<OrderItemDto> orderItemDtos) {

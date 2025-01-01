@@ -2,16 +2,17 @@ package com.example.ordermanagementservice.controllers;
 
 import com.example.ordermanagementservice.dtos.OrderRequestDto;
 import com.example.ordermanagementservice.dtos.OrderResponseDto;
+import com.example.ordermanagementservice.dtos.ValidateAndRefreshTokenRequestDto;
 import com.example.ordermanagementservice.services.IOrderService;
 import com.example.ordermanagementservice.utils.IDtoMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -26,10 +27,24 @@ public class OrderController {
     public ResponseEntity<OrderResponseDto> createOrder(@RequestBody @Valid OrderRequestDto orderRequestDto) {
         OrderResponseDto orderResponseDto;
         try {
-            orderResponseDto = dtoMapper.fromOrder(orderService.createOrder(dtoMapper.fromOrderRequestDto(orderRequestDto)));
+            orderResponseDto = dtoMapper.fromOrder(orderService.createOrder(dtoMapper.fromOrderRequestDto(orderRequestDto),
+                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
 
 
             return new ResponseEntity<>(orderResponseDto, HttpStatus.CREATED);
+        } catch (Exception exception) {
+            throw exception;
+        }
+    }
+
+    @GetMapping("/get_orders/{userId}")
+    public ResponseEntity<List<OrderResponseDto>> getAllOrdersByUser(@PathVariable Long userId, HttpServletRequest httpServletRequest) {
+        List<OrderResponseDto> orderResponseDtos;
+        try {
+            orderResponseDtos = dtoMapper.fromOrders(orderService.getAllOrdersofUser(userId,
+                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+
+            return new ResponseEntity<>(orderResponseDtos, HttpStatus.OK);
         } catch (Exception exception) {
             throw exception;
         }
