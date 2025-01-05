@@ -89,4 +89,17 @@ public class OrderController {
             throw exception;
         }
     }
+
+    @DeleteMapping("/orders/cancel/{id}")
+    public ResponseEntity<OrderResponseDto> cancelOrder(@PathVariable String id) {
+        OrderResponseDto orderResponseDto;
+        try {
+            orderResponseDto = dtoMapper.toOrderResponseDto(orderService.cancelOrder(id,
+                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+
+            return new ResponseEntity<>(orderResponseDto, HttpStatus.OK);
+        } catch (Exception exception) {
+            throw exception;
+        }
+    }
 }

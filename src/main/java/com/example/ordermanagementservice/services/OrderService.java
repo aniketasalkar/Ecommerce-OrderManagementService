@@ -53,6 +53,8 @@ public class OrderService implements IOrderService {
     @Autowired
     ObjectMapper objectMapper;
 
+    private final long deliveryCancellationTimeInMillis = 7 * 24 * 60 * 60 * 1000;
+
     @Override
     public Order createOrder(Order order, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
 
@@ -212,6 +214,34 @@ public class OrderService implements IOrderService {
         validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
 
         return order;
+    }
+
+    @Override
+    public Order cancelOrder(String orderId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+        Order order = orderRepository.findByOrderIdAndOrderStatusNot(orderId, OrderStatus.CANCELLED).
+                orElseThrow(() -> new OrderNotFound("Order Not found or Order may be Cancelled"));
+        validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
+
+        Date now = new Date();
+        Date cancellationDeadline = new Date(order.getOrderTracking().getUpdatedAt().getTime() + deliveryCancellationTimeInMillis);
+        if (now.after(cancellationDeadline)) {
+            throw new CannotCancelException("Order cancellation date is after delivery cancellation deadline");
+        }
+        order.setOrderStatus(OrderStatus.CANCELLED);
+        order.getOrderTracking().setLastStatus(order.getOrderTracking().getCurrentStatus());
+        order.getOrderTracking().setCurrentStatus(TrackingStatus.CANCELLED);
+        order.setUpdatedAt(now);
+        order.getOrderTracking().setUpdatedAt(now);
+
+        Order savedOrder = null;
+        try{
+            log.info("Order Id: {}", orderId);
+            savedOrder = orderRepository.save(order);
+        } catch (Exception e){
+            e.printStackTrace();
+        }
+
+        return savedOrder;
     }
 
     @Transactional

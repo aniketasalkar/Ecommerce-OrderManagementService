@@ -13,4 +13,5 @@ public interface IOrderService {
     List<Order> getAllOrdersofUser(long userId, String filter, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
     Order updateOrderStatus(Long id, UpdateOrderStatusDto updateOrderStatusDto, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
     Order getOrderTracking(String orderId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
+    Order cancelOrder(String orderId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto);
 }
