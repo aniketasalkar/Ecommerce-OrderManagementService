@@ -1,9 +1,6 @@
 package com.example.ordermanagementservice.utils;
 
-import com.example.ordermanagementservice.dtos.OrderRequestDto;
-import com.example.ordermanagementservice.dtos.OrderResponseDto;
-import com.example.ordermanagementservice.dtos.OrderItemDto;
-import com.example.ordermanagementservice.dtos.ValidateAndRefreshTokenRequestDto;
+import com.example.ordermanagementservice.dtos.*;
 import com.example.ordermanagementservice.exceptions.TokenExpiredException;
 import com.example.ordermanagementservice.exceptions.UnsupportedPaymentMethod;
 import com.example.ordermanagementservice.models.*;
@@ -25,7 +22,7 @@ public class DtoMapper implements IDtoMapper {
     private HttpServletRequest httpServletRequest;
 
     @Override
-    public Order fromOrderRequestDto(OrderRequestDto orderRequestDto) {
+    public Order toOrder(OrderRequestDto orderRequestDto) {
         Order order = new Order();
         order.setUserId(orderRequestDto.getUserId());
         order.setTotalAmount(orderRequestDto.getTotalAmount());
@@ -46,7 +43,7 @@ public class DtoMapper implements IDtoMapper {
     }
 
     @Override
-    public OrderResponseDto fromOrder(Order order) {
+    public OrderResponseDto toOrderResponseDto(Order order) {
         OrderResponseDto orderResponseDto = new OrderResponseDto();
         orderResponseDto.setUserId(order.getUserId());
         orderResponseDto.setTotalAmount(order.getTotalAmount());
@@ -81,11 +78,11 @@ public class DtoMapper implements IDtoMapper {
     }
 
     @Override
-    public List<OrderResponseDto> fromOrders(List<Order> orders) {
+    public List<OrderResponseDto> toOrderResponseDtoList(List<Order> orders) {
         List<OrderResponseDto> orderResponseDtos = new ArrayList<>();
 
         for (Order order : orders) {
-            OrderResponseDto orderResponseDto = fromOrder(order);
+            OrderResponseDto orderResponseDto = toOrderResponseDto(order);
             orderResponseDtos.add(orderResponseDto);
         }
 
@@ -104,6 +101,22 @@ public class DtoMapper implements IDtoMapper {
         }
 
         return tokensDto;
+    }
+
+    @Override
+    public OrderTrackingResponseDto toOrderTrackingResponseDto(Order order) {
+        OrderTrackingResponseDto orderTrackingResponseDto = new OrderTrackingResponseDto();
+        orderTrackingResponseDto.setTrackingId(order.getOrderTracking().getId());
+        orderTrackingResponseDto.setOrderId(order.getOrderId());
+        orderTrackingResponseDto.setCurrentStatus(order.getOrderTracking().getCurrentStatus().toString());
+        orderTrackingResponseDto.setExpectedDelivery(order.getExpectedDeliveryDate());
+        try {
+            orderTrackingResponseDto.setDeliverySnapshot(objectMapper.readValue(order.getDeliverySnapshot(), DeliverySnapshot.class));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        return orderTrackingResponseDto;
     }
 
     private List<OrderItem> fromCreateOrderRequestDto(List<OrderItemDto> orderItemDtos) {

@@ -11,6 +11,6 @@ public class RevokeInventoryReservationDto {
     @NotBlank(message = "reservationId cannot be empty")
     private String reservationId;
 
-    @NotBlank(message = "Revoke type cannot be Empty (COMPLETE, CANCELLED)")
+    @NotBlank(message = "Revoke type cannot be Empty (COMPLETED, CANCELLED)")
     private String revokeType;
 }

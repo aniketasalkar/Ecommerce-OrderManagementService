@@ -1,11 +1,8 @@
 package com.example.ordermanagementservice.controllers;
 
-import com.example.ordermanagementservice.dtos.OrderRequestDto;
-import com.example.ordermanagementservice.dtos.OrderResponseDto;
-import com.example.ordermanagementservice.dtos.ValidateAndRefreshTokenRequestDto;
+import com.example.ordermanagementservice.dtos.*;
 import com.example.ordermanagementservice.services.IOrderService;
 import com.example.ordermanagementservice.utils.IDtoMapper;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -27,7 +24,7 @@ public class OrderController {
     public ResponseEntity<OrderResponseDto> createOrder(@RequestBody @Valid OrderRequestDto orderRequestDto) {
         OrderResponseDto orderResponseDto;
         try {
-            orderResponseDto = dtoMapper.fromOrder(orderService.createOrder(dtoMapper.fromOrderRequestDto(orderRequestDto),
+            orderResponseDto = dtoMapper.toOrderResponseDto(orderService.createOrder(dtoMapper.toOrder(orderRequestDto),
                     dtoMapper.getValidateAndRefreshTokenRequestDto()));
 
 
@@ -42,10 +39,52 @@ public class OrderController {
                                                                      @RequestParam(value = "status", required = false, defaultValue = "ALL") String filter) {
         List<OrderResponseDto> orderResponseDtos;
         try {
-            orderResponseDtos = dtoMapper.fromOrders(orderService.getAllOrdersofUser(userId, filter,
+            orderResponseDtos = dtoMapper.toOrderResponseDtoList(orderService.getAllOrdersofUser(userId, filter,
                     dtoMapper.getValidateAndRefreshTokenRequestDto()));
 
             return new ResponseEntity<>(orderResponseDtos, HttpStatus.OK);
+        } catch (Exception exception) {
+            throw exception;
+        }
+    }
+
+    @PostMapping("/orders/{id}/update_order")
+    public ResponseEntity<OrderResponseDto> updateOrder(@PathVariable Long id, @RequestBody @Valid UpdateOrderDto updateOrderDto) {
+        OrderResponseDto orderResponseDto;
+        try {
+            orderResponseDto = dtoMapper.toOrderResponseDto(orderService.updateOrder(id,
+                    updateOrderDto,
+                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+
+            return new ResponseEntity<>(orderResponseDto, HttpStatus.OK);
+        } catch (Exception exception) {
+            throw exception;
+        }
+    }
+
+    @PostMapping("/orders/{id}/update_status")
+    public ResponseEntity<OrderResponseDto> updateOrderStatus(@PathVariable Long id, @RequestBody @Valid UpdateOrderStatusDto updateOrderStatusDto) {
+        OrderResponseDto orderResponseDto;
+
+        try {
+            orderResponseDto = dtoMapper.toOrderResponseDto(orderService.updateOrderStatus(id,
+                    updateOrderStatusDto,
+                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+
+            return new ResponseEntity<>(orderResponseDto, HttpStatus.OK);
+        } catch (Exception exception) {
+            throw exception;
+        }
+    }
+
+    @GetMapping("/orders/tracking/{id}")
+    public ResponseEntity<OrderTrackingResponseDto> getOrderTracking(@PathVariable String id) {
+        OrderTrackingResponseDto orderTrackingResponseDto;
+        try {
+            orderTrackingResponseDto = dtoMapper.toOrderTrackingResponseDto(orderService.getOrderTracking(id,
+                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+
+            return new ResponseEntity<>(orderTrackingResponseDto, HttpStatus.OK);
         } catch (Exception exception) {
             throw exception;
         }

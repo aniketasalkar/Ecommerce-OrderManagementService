@@ -1,9 +1,7 @@
 package com.example.ordermanagementservice.controllers;
 
 import com.example.ordermanagementservice.dtos.ErrorResponse;
-import com.example.ordermanagementservice.exceptions.InvalidUserException;
-import com.example.ordermanagementservice.exceptions.TokenExpiredException;
-import com.example.ordermanagementservice.exceptions.UnsupportedPaymentMethod;
+import com.example.ordermanagementservice.exceptions.*;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -60,6 +58,34 @@ public class ControllerAdvisor extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(InvalidUserException.class)
     public ResponseEntity<ErrorResponse> handleInvalidUserException(InvalidUserException exception) {
+        ErrorResponse errorResponse = new ErrorResponse(exception.getMessage(), HttpStatus.BAD_REQUEST.value());
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(OrderNotFound.class)
+    public ResponseEntity<ErrorResponse> handleOrderDoesNotExistException(OrderNotFound exception) {
+        ErrorResponse errorResponse = new ErrorResponse(exception.getMessage(), HttpStatus.NOT_FOUND.value());
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler(OrderAlreadyCancelled.class)
+    public ResponseEntity<ErrorResponse> handleOrderAlreadyCancelledException(OrderAlreadyCancelled exception) {
+        ErrorResponse errorResponse = new ErrorResponse(exception.getMessage(), HttpStatus.CONFLICT.value());
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(InvalidPaymentStatus.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPaymentStatusException(InvalidPaymentStatus exception) {
+        ErrorResponse errorResponse = new ErrorResponse(exception.getMessage(), HttpStatus.CONFLICT.value());
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(InvalidFieldException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidFieldException(InvalidFieldException exception) {
         ErrorResponse errorResponse = new ErrorResponse(exception.getMessage(), HttpStatus.BAD_REQUEST.value());
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);

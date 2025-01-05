@@ -4,13 +4,13 @@ import com.example.ordermanagementservice.clients.InventoryServiceClient;
 import com.example.ordermanagementservice.clients.UserAuthServiceClient;
 import com.example.ordermanagementservice.clients.UserManagementServiceClient;
 import com.example.ordermanagementservice.dtos.*;
-import com.example.ordermanagementservice.exceptions.InvalidUserException;
-import com.example.ordermanagementservice.exceptions.TokenExpiredException;
+import com.example.ordermanagementservice.exceptions.*;
 import com.example.ordermanagementservice.models.*;
 import com.example.ordermanagementservice.repositories.OrderItemRepository;
 import com.example.ordermanagementservice.repositories.OrderRepository;
 import com.example.ordermanagementservice.repositories.OrderTrackingRepository;
 import com.example.ordermanagementservice.utils.IdGenerator;
+import com.example.ordermanagementservice.utils.KafkaEventGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,6 +46,9 @@ public class OrderService implements IOrderService {
 
     @Autowired
     UserManagementServiceClient userManagementServiceClient;
+
+    @Autowired
+    KafkaEventGenerator kafkaEventGenerator;
 
     @Autowired
     ObjectMapper objectMapper;
@@ -120,6 +124,39 @@ public class OrderService implements IOrderService {
         return savedOrder;
     }
 
+    @Transactional
+    @Override
+    public Order updateOrder(Long id, UpdateOrderDto updateOrderDto, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+        validateUser(updateOrderDto.getUserId(), validateAndRefreshTokenRequestDto);
+        Order order = orderRepository.findByIdAndOrderStatus(id, OrderStatus.PLACED)
+                .orElseThrow(() -> new OrderNotFound("Order Not found or already updated with payment status."));
+
+        if (PaymentStatus.valueOf(updateOrderDto.getPaymentStatus().trim().toUpperCase()) == PaymentStatus.PENDING) {
+            throw new InvalidPaymentStatus("Payment status cannot be PENDING");
+        }
+
+        try {
+            order.setPaymentStatus(PaymentStatus.valueOf(updateOrderDto.getPaymentStatus().trim().toUpperCase()));
+        } catch (IllegalArgumentException e) {
+            throw new InvalidPaymentStatus("Invalid payment status");
+        }
+        order.setUpdatedAt(new Date());
+
+        Order savedOrder = orderRepository.save(order);
+        ReservationRevokeType reservationRevokeType = order.getPaymentStatus() == PaymentStatus.COMPLETED?
+                ReservationRevokeType.COMPLETED : ReservationRevokeType.CANCELLED;
+        for (OrderItem item : order.getOrderItems()) {
+            RevokeInventoryReservationDto revokeInventoryReservationDto = new RevokeInventoryReservationDto();
+            revokeInventoryReservationDto.setReservationId(item.getReservationId());
+            revokeInventoryReservationDto.setOrderId(savedOrder.getOrderId());
+            revokeInventoryReservationDto.setRevokeType(reservationRevokeType.toString());
+
+            inventoryServiceClient.revokeReservation(revokeInventoryReservationDto);
+        }
+
+        return savedOrder;
+    }
+
     @Override
     public List<Order> getAllOrdersofUser(long userId, String filter, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
         validateUser(userId, validateAndRefreshTokenRequestDto);
@@ -136,6 +173,45 @@ public class OrderService implements IOrderService {
 
         }
         return orders;
+    }
+
+    @Override
+    public Order updateOrderStatus(Long id, UpdateOrderStatusDto updateOrderStatusDto, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+        validateUser(updateOrderStatusDto.getUserId(), validateAndRefreshTokenRequestDto);
+        Order order = orderRepository.findByIdAndOrderStatusNotIn(id, List.of(OrderStatus.CANCELLED, OrderStatus.DELIVERED))
+                .orElseThrow(() -> new OrderNotFound("Order Not found or Order may be cancelled or Delivered"));
+
+        TrackingStatus trackingStatus;
+        try {
+            trackingStatus = TrackingStatus.valueOf(updateOrderStatusDto.getStatus().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new InvalidFieldException("Invalid tracking status");
+        }
+
+        if (order.getOrderTracking().getCurrentStatus() == trackingStatus) {
+            return order;
+        }
+
+        if (trackingStatus == TrackingStatus.DELIVERED) {
+            order.setOrderStatus(OrderStatus.DELIVERED);
+        }
+
+        Date now = new Date();
+        order.getOrderTracking().setLastStatus(order.getOrderTracking().getCurrentStatus());
+        order.getOrderTracking().setCurrentStatus(trackingStatus);
+        order.getOrderTracking().setUpdatedAt(now);
+        order.setUpdatedAt(now);
+
+        Order savedOrder = orderRepository.save(order);
+        return savedOrder;
+    }
+
+    @Override
+    public Order getOrderTracking(String orderId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+        Order order = orderRepository.findByOrderId(orderId).orElseThrow(() -> new OrderNotFound("Order Not found"));
+        validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
+
+        return order;
     }
 
     @Transactional
