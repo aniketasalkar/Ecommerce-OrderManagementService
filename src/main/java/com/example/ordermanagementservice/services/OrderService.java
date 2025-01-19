@@ -1,6 +1,7 @@
 package com.example.ordermanagementservice.services;
 
 import com.example.ordermanagementservice.clients.InventoryServiceClient;
+import com.example.ordermanagementservice.clients.PaymentServiceClient;
 import com.example.ordermanagementservice.clients.UserAuthServiceClient;
 import com.example.ordermanagementservice.clients.UserManagementServiceClient;
 import com.example.ordermanagementservice.dtos.*;
@@ -9,12 +10,15 @@ import com.example.ordermanagementservice.models.*;
 import com.example.ordermanagementservice.repositories.OrderItemRepository;
 import com.example.ordermanagementservice.repositories.OrderRepository;
 import com.example.ordermanagementservice.repositories.OrderTrackingRepository;
+import com.example.ordermanagementservice.utils.DtoMapper;
 import com.example.ordermanagementservice.utils.IdGenerator;
 import com.example.ordermanagementservice.utils.KafkaEventGenerator;
+import com.example.ordermanagementservice.utils.TokenValidation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
@@ -48,96 +52,138 @@ public class OrderService implements IOrderService {
     UserManagementServiceClient userManagementServiceClient;
 
     @Autowired
+    PaymentServiceClient paymentServiceClient;
+
+    @Autowired
     KafkaEventGenerator kafkaEventGenerator;
+
+    @Autowired
+    TokenValidation tokenValidation;
 
     @Autowired
     ObjectMapper objectMapper;
 
+    @Autowired
+    DtoMapper dtoMapper;
+
     private final long deliveryCancellationTimeInMillis = 7 * 24 * 60 * 60 * 1000;
 
+    @Transactional
     @Override
-    public Order createOrder(Order order, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
-
-        validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
-        String orderId = IdGenerator.generateId(14);
-
-        List<OrderItem> filteredItems = order.getOrderItems().stream()
-                .filter(item -> {
-                    InventoryReservationRequestDto inventoryReservationRequestDto = new InventoryReservationRequestDto();
-                    inventoryReservationRequestDto.setProductId(item.getProductId());
-                    inventoryReservationRequestDto.setQuantity(item.getQuantity());
-                    inventoryReservationRequestDto.setOrderId(orderId);
-
-                    InventoryReservationResponseDto inventoryReservationResponseDto = inventoryServiceClient.
-                            reserveInventoryItem(inventoryReservationRequestDto);
-
-                    if (inventoryReservationResponseDto != null) {
-                        item.setReservationId(inventoryReservationResponseDto.getReservationId());
-                        log.info("Reserved Item: {} Quantity: {}", item.getProductId(), item.getQuantity());
-                        return true; // Keep the item
-                    }
-                    return false; // Exclude the item
-                })
-                .collect(Collectors.toList());
-
-        order.setOrderItems(filteredItems);
-
-        Date now = new Date();
-
-        OrderTracking orderTracking = new OrderTracking();
-        orderTracking.setCurrentStatus(TrackingStatus.IN_TRANSIT);
-        orderTracking.setCreatedAt(now);
-        orderTracking.setUpdatedAt(now);
-        order.setOrderTracking(orderTracking);
-
-        double totalAmount = 0;
-        for (OrderItem item : order.getOrderItems()) {
-            item.setCreatedAt(now);
-            item.setUpdatedAt(now);
-            try {
-                totalAmount += item.getQuantity() * objectMapper.
-                        readValue(item.getProductSnapshot(), ProductSnapshot.class).getPrice();
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        if (totalAmount != order.getTotalAmount()) {
-            order.setTotalAmount(totalAmount);
-            log.info("Order Total adjusted to {}", totalAmount);
-        }
-
-        order.setTotalAmount(totalAmount);
-        order.setOrderDate(now);
-        order.setOrderStatus(OrderStatus.PLACED);
-        order.setPaymentStatus(PaymentStatus.PENDING);
-        order.setOrderId(orderId);
-        order.setCreatedAt(now);
-        order.setUpdatedAt(now);
-
-        Order savedOrder = null;
+    public OrderResponsePaymentLinkDto createOrder(Order order, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
         try {
-            savedOrder = saveOrder(order);
-        } catch (DataAccessException e) {
-            log.error("Error while saving order {} of user {}", orderId, order.getUserId());
-            handleInventoryRevocation(order);
-        }
+            validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
+            String orderId = IdGenerator.generateId(14);
 
-        return savedOrder;
+            List<OrderItem> filteredItems = order.getOrderItems().stream()
+                    .filter(item -> {
+                        InventoryReservationRequestDto inventoryReservationRequestDto = new InventoryReservationRequestDto();
+                        inventoryReservationRequestDto.setProductId(item.getProductId());
+                        inventoryReservationRequestDto.setQuantity(item.getQuantity());
+                        inventoryReservationRequestDto.setOrderId(orderId);
+
+                        InventoryReservationResponseDto inventoryReservationResponseDto = inventoryServiceClient.
+                                reserveInventoryItem(inventoryReservationRequestDto);
+
+                        if (inventoryReservationResponseDto != null) {
+                            item.setReservationId(inventoryReservationResponseDto.getReservationId());
+                            log.info("Reserved Item: {} Quantity: {}", item.getProductId(), item.getQuantity());
+                            return true; // Keep the item
+                        }
+                        return false; // Exclude the item
+                    })
+                    .collect(Collectors.toList());
+
+            order.setOrderItems(filteredItems);
+
+            Date now = new Date();
+
+            OrderTracking orderTracking = new OrderTracking();
+            orderTracking.setCurrentStatus(TrackingStatus.IN_TRANSIT);
+            orderTracking.setCreatedAt(now);
+            orderTracking.setUpdatedAt(now);
+            order.setOrderTracking(orderTracking);
+
+            double totalAmount = 0;
+            for (OrderItem item : order.getOrderItems()) {
+                item.setCreatedAt(now);
+                item.setUpdatedAt(now);
+                try {
+                    totalAmount += item.getQuantity() * objectMapper.
+                            readValue(item.getProductSnapshot(), ProductSnapshot.class).getPrice();
+                } catch (JsonProcessingException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            if (totalAmount != order.getTotalAmount()) {
+                order.setTotalAmount(totalAmount);
+                log.info("Order Total adjusted to {}", totalAmount);
+            }
+
+            order.setTotalAmount(totalAmount);
+            order.setOrderDate(now);
+            order.setOrderStatus(OrderStatus.PLACED);
+            order.setPaymentStatus(PaymentStatus.PENDING);
+            order.setOrderId(orderId);
+            order.setCreatedAt(now);
+            order.setUpdatedAt(now);
+
+            Order savedOrder = null;
+            try {
+                savedOrder = saveOrder(order);
+            } catch (DataAccessException e) {
+                log.error("Error while saving order {} of user {}", orderId, order.getUserId());
+                handleInventoryRevocation(order);
+            }
+
+            String paymentLink = "";
+            if (savedOrder.getPaymentMethod() == PaymentMethod.CASH) {
+                paymentLink = "payment Link will be generated at the time od Delivery";
+            } else {
+                paymentLink = getPaymentLink(order).getPaymentLink();
+            }
+            OrderResponsePaymentLinkDto orderResponseDto = dtoMapper.toOrderResponsePaymentLinkDto(savedOrder, paymentLink);
+            return orderResponseDto;
+        } catch (Exception exception) {
+            log.error("Error occurred");
+            handleInventoryRevocation(order);
+            throw exception;
+        }
+    }
+
+    private InitiatePaymentResponseDto getPaymentLink(Order order) {
+        UserResponseDto userResponseDto = userManagementServiceClient.getUserById(order.getUserId());
+        UserDto user = new UserDto();
+        user.setName(userResponseDto.getFirstName() + " " + userResponseDto.getLastName());
+        user.setEmail(userResponseDto.getEmail());
+        user.setPhoneNumber(userResponseDto.getPhoneNumber());
+        user.setUserId(order.getUserId());
+
+        InitiatePaymentRequestDto requestDto = new InitiatePaymentRequestDto();
+        requestDto.setOrderNumber(order.getId());
+        requestDto.setOrderId(order.getOrderId());
+        requestDto.setAmount(order.getTotalAmount());
+        requestDto.setCurrency("INR");
+        requestDto.setUser(user);
+        requestDto.setPaymentMode(order.getPaymentMethod().toString());
+        requestDto.setPaymentGateway("RAZORPAY");
+
+        return paymentServiceClient.initiatePayment(requestDto).getBody();
     }
 
     @Transactional
     @Override
-    public Order updateOrder(Long id, UpdateOrderDto updateOrderDto, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
-        validateUser(updateOrderDto.getUserId(), validateAndRefreshTokenRequestDto);
+    public Order updateOrder(Long id, UpdateOrderDto updateOrderDto, ValidateServiceTokenRequestDto validateServiceTokenRequestDto) {
+//        validateUser(updateOrderDto.getUserId(), validateAndRefreshTokenRequestDto);
+        tokenValidation.validateServiceToken(validateServiceTokenRequestDto);
         Order order = orderRepository.findByIdAndOrderStatus(id, OrderStatus.PLACED)
                 .orElseThrow(() -> new OrderNotFound("Order Not found or already updated with payment status."));
 
-        if (PaymentStatus.valueOf(updateOrderDto.getPaymentStatus().trim().toUpperCase()) == PaymentStatus.PENDING) {
-            throw new InvalidPaymentStatus("Payment status cannot be PENDING");
-        }
-
         try {
+            if (PaymentStatus.valueOf(updateOrderDto.getPaymentStatus().trim().toUpperCase()) == PaymentStatus.PENDING) {
+                throw new InvalidPaymentStatus("Payment status cannot be PENDING");
+            }
             order.setPaymentStatus(PaymentStatus.valueOf(updateOrderDto.getPaymentStatus().trim().toUpperCase()));
         } catch (IllegalArgumentException e) {
             throw new InvalidPaymentStatus("Invalid payment status");
@@ -145,6 +191,7 @@ public class OrderService implements IOrderService {
         order.setUpdatedAt(new Date());
 
         Order savedOrder = orderRepository.save(order);
+        log.info("Updated order {}", savedOrder);
         ReservationRevokeType reservationRevokeType = order.getPaymentStatus() == PaymentStatus.COMPLETED?
                 ReservationRevokeType.COMPLETED : ReservationRevokeType.CANCELLED;
         for (OrderItem item : order.getOrderItems()) {
@@ -209,9 +256,9 @@ public class OrderService implements IOrderService {
     }
 
     @Override
-    public Order getOrderTracking(String orderId, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
+    public Order getOrderTracking(String orderId) {
         Order order = orderRepository.findByOrderId(orderId).orElseThrow(() -> new OrderNotFound("Order Not found"));
-        validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
+//        validateUser(order.getUserId(), validateAndRefreshTokenRequestDto);
 
         return order;
     }

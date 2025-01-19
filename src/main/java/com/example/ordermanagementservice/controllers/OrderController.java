@@ -21,11 +21,11 @@ public class OrderController {
     IDtoMapper dtoMapper;
 
     @PostMapping("/create_order")
-    public ResponseEntity<OrderResponseDto> createOrder(@RequestBody @Valid OrderRequestDto orderRequestDto) {
-        OrderResponseDto orderResponseDto;
+    public ResponseEntity<OrderResponsePaymentLinkDto> createOrder(@RequestBody @Valid OrderRequestDto orderRequestDto) {
+        OrderResponsePaymentLinkDto orderResponseDto;
         try {
-            orderResponseDto = dtoMapper.toOrderResponseDto(orderService.createOrder(dtoMapper.toOrder(orderRequestDto),
-                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+            orderResponseDto = orderService.createOrder(dtoMapper.toOrder(orderRequestDto),
+                    dtoMapper.getValidateAndRefreshTokenRequestDto());
 
 
             return new ResponseEntity<>(orderResponseDto, HttpStatus.CREATED);
@@ -54,7 +54,7 @@ public class OrderController {
         try {
             orderResponseDto = dtoMapper.toOrderResponseDto(orderService.updateOrder(id,
                     updateOrderDto,
-                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+                    dtoMapper.toValidateServiceTokenRequestDto()));
 
             return new ResponseEntity<>(orderResponseDto, HttpStatus.OK);
         } catch (Exception exception) {
@@ -81,8 +81,8 @@ public class OrderController {
     public ResponseEntity<OrderTrackingResponseDto> getOrderTracking(@PathVariable String id) {
         OrderTrackingResponseDto orderTrackingResponseDto;
         try {
-            orderTrackingResponseDto = dtoMapper.toOrderTrackingResponseDto(orderService.getOrderTracking(id,
-                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
+            orderTrackingResponseDto = dtoMapper.toOrderTrackingResponseDto(orderService.getOrderTracking(id));
+//                    dtoMapper.getValidateAndRefreshTokenRequestDto()));
 
             return new ResponseEntity<>(orderTrackingResponseDto, HttpStatus.OK);
         } catch (Exception exception) {

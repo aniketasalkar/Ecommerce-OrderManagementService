@@ -52,6 +52,8 @@ public class DtoMapper implements IDtoMapper {
         orderResponseDto.setPaymentMethod(order.getPaymentMethod().toString());
         orderResponseDto.setOrderDate(order.getOrderDate());
         orderResponseDto.setExpectedDeliveryDate(order.getExpectedDeliveryDate());
+        orderResponseDto.setOrderId(order.getOrderId());
+//        orderResponseDto.setPaymentUrl(paymentLink);
         try {
             orderResponseDto.setDeliverySnapshot(objectMapper.readValue(order.getDeliverySnapshot(), DeliverySnapshot.class));
         } catch (JsonProcessingException e) {
@@ -117,6 +119,57 @@ public class DtoMapper implements IDtoMapper {
         }
 
         return orderTrackingResponseDto;
+    }
+
+    @Override
+    public OrderResponsePaymentLinkDto toOrderResponsePaymentLinkDto(Order order, String paymentLink) {
+        OrderResponsePaymentLinkDto orderResponseDto = new OrderResponsePaymentLinkDto();
+        orderResponseDto.setUserId(order.getUserId());
+        orderResponseDto.setTotalAmount(order.getTotalAmount());
+        orderResponseDto.setOrderStatus(order.getOrderStatus().toString());
+        orderResponseDto.setPaymentStatus(order.getPaymentStatus().toString());
+        orderResponseDto.setPaymentMethod(order.getPaymentMethod().toString());
+        orderResponseDto.setOrderDate(order.getOrderDate());
+        orderResponseDto.setExpectedDeliveryDate(order.getExpectedDeliveryDate());
+        orderResponseDto.setOrderId(order.getOrderId());
+        orderResponseDto.setPaymentUrl(paymentLink);
+        try {
+            orderResponseDto.setDeliverySnapshot(objectMapper.readValue(order.getDeliverySnapshot(), DeliverySnapshot.class));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        List<OrderItemDto> orderItems = new ArrayList<>();
+        for (OrderItem orderItem : order.getOrderItems()) {
+            OrderItemDto orderItemDto = new OrderItemDto();
+            orderItemDto.setProductId(orderItem.getProductId());
+            orderItemDto.setQuantity(orderItem.getQuantity());
+            orderItemDto.setPrice(orderItem.getPrice());
+            try {
+                orderItemDto.setProductSnapshot(objectMapper.readValue(orderItem.getProductSnapshot(), ProductSnapshot.class));
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+            orderItems.add(orderItemDto);
+        }
+
+        orderResponseDto.setOrderItems(orderItems);
+
+        return orderResponseDto;
+    }
+
+    @Override
+    public ValidateServiceTokenRequestDto toValidateServiceTokenRequestDto() {
+        ValidateServiceTokenRequestDto tokensDto = null;
+        try {
+            tokensDto = new ValidateServiceTokenRequestDto();
+            tokensDto.setServiceToken(httpServletRequest.getHeader("Service-Token").toString());
+            tokensDto.setServiceName("ORDERMANAGEMENTSERVICE");
+        } catch (Exception e) {
+            throw new TokenExpiredException("Token required");
+        }
+
+        return tokensDto;
     }
 
     private List<OrderItem> fromCreateOrderRequestDto(List<OrderItemDto> orderItemDtos) {

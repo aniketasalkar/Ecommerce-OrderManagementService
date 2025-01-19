@@ -7,7 +7,7 @@ import java.util.Date;
 import java.util.List;
 
 @Data
-public class OrderResponseDto {
+public class OrderResponsePaymentLinkDto {
     private Long userId;
 
     private List<OrderItemDto> orderItems;
@@ -27,4 +27,6 @@ public class OrderResponseDto {
     private DeliverySnapshot deliverySnapshot;
 
     private String orderId;
+
+    private String paymentUrl;
 }
