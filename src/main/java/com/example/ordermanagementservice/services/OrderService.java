@@ -144,6 +144,8 @@ public class OrderService implements IOrderService {
                 paymentLink = getPaymentLink(order).getPaymentLink();
             }
             OrderResponsePaymentLinkDto orderResponseDto = dtoMapper.toOrderResponsePaymentLinkDto(savedOrder, paymentLink);
+            // kafka event for email service order placed but payment pending.
+            kafkaEventGenerator.sendPaymentEmail(orderResponseDto);
             return orderResponseDto;
         } catch (Exception exception) {
             log.error("Error occurred");
@@ -176,7 +178,7 @@ public class OrderService implements IOrderService {
     @Override
     public Order updateOrder(Long id, UpdateOrderDto updateOrderDto, ValidateServiceTokenRequestDto validateServiceTokenRequestDto) {
 //        validateUser(updateOrderDto.getUserId(), validateAndRefreshTokenRequestDto);
-        tokenValidation.validateServiceToken(validateServiceTokenRequestDto);
+//        tokenValidation.validateServiceToken(validateServiceTokenRequestDto);
         Order order = orderRepository.findByIdAndOrderStatus(id, OrderStatus.PLACED)
                 .orElseThrow(() -> new OrderNotFound("Order Not found or already updated with payment status."));
 
@@ -189,6 +191,7 @@ public class OrderService implements IOrderService {
             throw new InvalidPaymentStatus("Invalid payment status");
         }
         order.setUpdatedAt(new Date());
+        order.setOrderStatus(order.getPaymentStatus() == PaymentStatus.FAILED? OrderStatus.CANCELLED: OrderStatus.PLACED);
 
         Order savedOrder = orderRepository.save(order);
         log.info("Updated order {}", savedOrder);
@@ -202,7 +205,12 @@ public class OrderService implements IOrderService {
 
             inventoryServiceClient.revokeReservation(revokeInventoryReservationDto);
         }
-
+        // order confirm email
+        if (savedOrder.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            kafkaEventGenerator.sendConfirmOrderEmail(order);
+        } else if (savedOrder.getPaymentStatus() == PaymentStatus.FAILED) {
+            kafkaEventGenerator.sendPaymentFailureEmail(order);
+        }
         return savedOrder;
     }
 
@@ -226,7 +234,7 @@ public class OrderService implements IOrderService {
 
     @Override
     public Order updateOrderStatus(Long id, UpdateOrderStatusDto updateOrderStatusDto, ValidateAndRefreshTokenRequestDto validateAndRefreshTokenRequestDto) {
-        validateUser(updateOrderStatusDto.getUserId(), validateAndRefreshTokenRequestDto);
+//        validateUser(updateOrderStatusDto.getUserId(), validateAndRefreshTokenRequestDto);
         Order order = orderRepository.findByIdAndOrderStatusNotIn(id, List.of(OrderStatus.CANCELLED, OrderStatus.DELIVERED))
                 .orElseThrow(() -> new OrderNotFound("Order Not found or Order may be cancelled or Delivered"));
 
